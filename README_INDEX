@@ -1,0 +1,98 @@
+需要用到的buffer的函数：
+
+blockInfo *get_file_block(const std::string& database, const std::string& table_name, int fileType, int blockNum);
+根据blockNum得到blockInfo的指针，buffer需要把整个block读到内存，并完成结构中变量的初始化
+如果blockNum所指的block没有被创建过，则新建一个block返回
+
+void writeRootBlock(const std::string& database, const std::string& table_name, blockInfo *block);
+这个是告诉buffer我把blockInfo *block所指向的blockNum改成了0，这是新的根节点。
+PS：我理解的buffer要在文件中单独维护一个表来管理所有的index的0号block
+
+void deleteBlock(const std::string& database, const std::string& table_name, blockInfo *block);
+删除整个block，这个block不再使用，其blockNum回收，delete[] block->cBlock
+
+blockInfo *get_new_block(const std::string& database, const std::string& table_name);
+创建一个新block，并给一个没有使用过的block号。
+
+Index提供的外部接口：
+1. 每次修改了block后会把blockInfo中的dirtyBit设为true
+PS：这个是给buffer用的，告诉buffer内存不够释放内存空间时要把内容写回去
+
+2. int search_one(const std::string& database, const std::string& table_name, struct index_info& inform);
+返回查找的block的block号。
+
+3. void search_many(const std::string& database, const std::string& table_name, int& start, int& end, int type, struct index_info& inform);
+这是一次性查找很多，比如查找小于某个值的所有key
+返回值：
+start ＝ 结果的起始block号; end ＝ 结果的终止block号
+inform.offset ＝ 索引文件start起始块中的第一个所需值的偏移量（>,>=）   
+或 ＝ 索引文件end终止块中的最后一个所需值的偏移量（<,<=）
+
+4. void insert_one(const std::string& database, const std::string& table_name, struct index_info& inform);
+插入值，没有返回，调用后就不管了
+
+5. void delete_one(const std::string& database, const std::string& table_name, struct index_info& inform);
+删除值，没有返回，调用后不用管了
+
+PS：其余函数都是private的，如果还有什么接口需要用没有提供的也请告诉我。
+
+PPS：我的class Tree定义
+class Tree {
+    private:
+        int N; // number of pointers in each node
+        int StrLen;
+        int LeafLeast;
+        int InnodeLeast;
+        
+        void setN(int n);
+        int search_leaf(const std::string& database, const std::string& table_name, const index_info& inform);
+        int findNextLeafSibling(const std::string& database, const std::string& table_name, int blocknum);
+        int findLeftMostSibling(const std::string& database, const std::string& table_name);
+        int findPrevLeafSibling(const std::string& database, const std::string& table_name, int blocknum);
+        int findParent(const std::string& database, const std::string& table_name, const index_info& inform, int blocknum);
+        int getoffset(const std::string& database, const std::string& table_name, const index_info& inform, int type, int blocknum);
+        void insert_divide(const std::string& database, const std::string& table_name, struct index_info& inform, int leaf1, int leaf2, char* leafpoint2);
+        void write(blockInfo *const node, const std::string& s);
+        void delete_entry(const std::string& database, const std::string& table_name, struct index_info& inform, int n, const std::string& K, int nod);
+        void insert_leaf(const std::string& database, const std::string& table_name, struct index_info& inform, int Node);
+        void insert_parent(const std::string& database, const std::string& table_name, struct index_info& inform, int Node, const std::string& K, int n);
+    public:
+        Tree();
+        int search_one(const std::string& database, const std::string& table_name, struct index_info& inform);
+        void search_many(const std::string& database, const std::string& table_name, int& start, int& end, int type, struct index_info& inform);
+        void insert_one(const std::string& database, const std::string& table_name, struct index_info& inform);
+        void delete_one(const std::string& database, const std::string& table_name, struct index_info& inform);
+};
+
+PPS：老师给的结构体（不是我定义的，我里面都是严格按照这些结构体定义的信息来用的）
+struct blockInfo;
+struct fileInfo {
+    int type;                   // 0-> data file
+                                // 1 -> index file
+    std::string fileName;            // the name of the file
+    int recordAmount;           // the number of record in the file
+    int freeNum;                // the free block number which could be used for the file
+    int recordLength;           // the length of the record in the file
+    fileInfo *next;             // the pointer points to the next file
+    blockInfo *firstBlock;      // point to the first block within the file
+};
+struct blockInfo {
+    int blockNum;               // the block number of the block, which indicate it when it be newed
+    bool dirtyBit;              // 0 -> flase
+                                // 1 -> indicate dirty, write back
+    blockInfo *next;            // the pointer point to next block
+    fileInfo *file;             // the pointer point to the file, which the block belongs to
+    int charNum;                // the number of chars in the block
+    char *cBlock;               // the array space for storing the records in the block in buffer
+    int iTime;                  // it indicate the age of the block in use
+    int lock;                   // prevent the block from replacing
+};
+struct index_info {
+    std::string index_name;     //the name of the index file
+    int length;                 //the length of the value
+    char type;                  //the type of the value
+                                //0---int,1---float,2----char(n)    
+    long offset;                //the record offset in the table file
+    std::string value;          //the value
+};
+
